@@ -2,6 +2,17 @@
 
 ---
 
+# AI Usage
+I used ChatGPT as a code-reading and documentation assistant rather than asking it to find bugs automatically. 
+- Example: After reading the code myself, I provided individual files and asked for help summarizing their responsibilities, tracing data flow, and identifying organizational patterns for the codebase map. This helped me organize what I had already learned from reading the project.
+
+During debugging, I first traced each feature from the route layer into the corresponding service before asking ChatGPT to explain weird logic or verify my understanding of potential bugs. 
+- Example: After following the listening streak code into `streak_service.py`, I asked ChatGPT to help explain what was wrong with the weekday comparison. I also used it to verify that duplicate search results could occur because of the SQL join in `search_service.py`.
+
+Finally, I used ChatGPT to help write my codebase map by further explaining functions/methods that I didn't fully understand. I also had it help me during the root cause analysis entries by helping me figure out ways to reproduce the bugs.
+
+---
+
 # Codebase Map
 
 ## app.py
