@@ -428,3 +428,37 @@ Checked:
 - Ratings continue to save correctly.
 - Users are not notified about their own ratings.
 - Playlist notifications continue working.
+
+
+## Issue #5: The last song in a playlist never shows up
+
+### How I reproduced it
+1. Create a playlist containing multiple songs.
+2. Request `/playlists/<id>/songs`.
+3. Observe that the final song is always missing.
+
+### How I found the root cause
+- Started from `routes/playlists.py`.
+- Followed the request to `get_playlist_songs()` in `playlist_service.py`.
+- Examined the returned list.
+
+### The root cause
+The function returns
+
+```python
+return [song.to_dict() for song in songs[:-1]]
+```
+
+The slice `[:-1]` removes the final element of the list every time, causing the last playlist song to never be returned.
+
+### My fix and side-effect check
+Return the complete list instead:
+
+```python
+return [song.to_dict() for song in songs]
+```
+
+Checked:
+- All playlist songs are returned.
+- Playlist ordering is preserved.
+- Single-song playlists now correctly return one song.
