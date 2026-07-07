@@ -339,3 +339,46 @@ cutoff = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
 Checked:
 - Today's listening events still appear.
 - Events from previous calendar days no longer appear.
+
+
+## Issue #3: The same song keeps showing up twice in search
+
+### How I reproduced it
+1. Create a song with multiple tags.
+2. Search using the song's title or artist.
+3. Observe that the same song appears multiple times in the results.
+
+### How I found the root cause
+- Started from `routes/songs.py`.
+- Followed the search request to `search_service.py`.
+- Examined the SQLAlchemy query joining the `song_tags` table.
+
+### The root cause
+The search query performs an outer join with the `song_tags` table:
+
+```python
+.outerjoin(song_tags, Song.id == song_tags.c.song_id)
+```
+
+A song with multiple tags produces multiple joined rows, but the query never removes duplicate songs before returning them.
+
+### My fix and side-effect check
+Add `.distinct()` to the query:
+
+```python
+db.session.query(Song)
+.outerjoin(song_tags, Song.id == song_tags.c.song_id)
+.filter(
+    db.or_(
+        Song.title.ilike(f"%{query}%"),
+        Song.artist.ilike(f"%{query}%"),
+    )
+)
+.distinct()
+.all()
+```
+
+Checked:
+- Songs with multiple tags appear once.
+- Songs without tags still appear.
+- Search by title and artist continues to work.
