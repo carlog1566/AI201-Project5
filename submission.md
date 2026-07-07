@@ -286,7 +286,7 @@ elif days_since_last == 1 and today.weekday() != 6:
 
 `today.weekday() == 6` represents Sunday. This condition prevents streaks from incrementing on Sundays, causing the streak to reset even when the user listened on consecutive days.
 
-### Your fix and side-effect check
+### My fix and side-effect check
 Remove the weekday restriction:
 
 ```python
@@ -299,3 +299,43 @@ Checked:
 - Same-day listens still do not increment twice.
 - Missing more than one day still resets the streak.
 - Consecutive listening works for every day of the week.
+
+
+## Issue #2: Friends Listening Now shows people from yesterday
+
+### How I reproduced it
+1. Create a listening event late yesterday (less than 24 hours ago).
+2. Request `/feed/<user_id>/listening-now`.
+3. Observe that the friend still appears in the feed.
+
+### How I found the root cause
+- Started from `routes/feed.py`.
+- Followed the call to `get_friends_listening_now()` in `services/feed_service.py`.
+- Found the time filter used to determine "recent."
+
+### The root cause
+The service defines "Listening Now" as anything within the past 24 hours:
+
+```python
+RECENT_THRESHOLD = timedelta(hours=24)
+```
+
+and filters using
+
+```python
+ListeningEvent.listened_at >= cutoff
+```
+
+Due to this, listening events still appear from the previous day.
+
+### My fix and side-effect check
+Replace the rolling 24-hour cutoff with the beginning of the current day (midnight UTC):
+
+```python
+today = datetime.now(timezone.utc).date()
+cutoff = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+```
+
+Checked:
+- Today's listening events still appear.
+- Events from previous calendar days no longer appear.
