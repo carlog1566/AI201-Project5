@@ -1,3 +1,7 @@
+# AI 201 - Project 5
+
+---
+
 # Codebase Map
 
 ## app.py
@@ -253,3 +257,45 @@ Recording a listening event
 ### Pattern noticed
 - Complex streak rules are isolated into a helper function.
 - One database transaction updates both the event and the user's streak.
+
+---
+
+# Root Cause Analysis
+
+## Issue #1: My listening streak keeps resetting
+
+### How I reproduced it
+1. Create a user with an existing listening streak.
+2. Set `last_listened_at` to the previous day.
+3. Record a new listening event on a Sunday.
+4. Observe that the streak resets to 1 instead of incrementing.
+
+### How I found the root cause
+- Started from `routes/songs.py` (`/listen` endpoint).
+- Followed the call to `record_listening_event()` in `services/streak_service.py`.
+- Traced into `update_listening_streak()`.
+- Found the conditional responsible for incrementing the streak.
+
+### The root cause
+The streak increment logic contains an unnecessary weekday check:
+
+```python
+elif days_since_last == 1 and today.weekday() != 6:
+    user.listening_streak += 1
+```
+
+`today.weekday() == 6` represents Sunday. This condition prevents streaks from incrementing on Sundays, causing the streak to reset even when the user listened on consecutive days.
+
+### Your fix and side-effect check
+Remove the weekday restriction:
+
+```python
+elif days_since_last == 1:
+```
+
+This allows streaks to increment after any consecutive day.
+
+Checked:
+- Same-day listens still do not increment twice.
+- Missing more than one day still resets the streak.
+- Consecutive listening works for every day of the week.
