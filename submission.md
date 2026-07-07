@@ -382,3 +382,49 @@ Checked:
 - Songs with multiple tags appear once.
 - Songs without tags still appear.
 - Search by title and artist continues to work.
+
+
+## Issue #4: I got notified when a friend added my song to a playlist but not when they rated it
+
+### How I reproduced it
+1. Have User A share a song.
+2. Have User B rate the song.
+3. Check User A's notifications.
+4. No notification is created.
+
+### How I found the root cause
+- Started from `routes/songs.py`.
+- Followed the `/rate` endpoint into `notification_service.py`.
+- Compared `rate_song()` with `add_to_playlist()`.
+
+### The root cause
+`add_to_playlist()` creates a notification after updating the playlist:
+
+```python
+create_notification(...)
+```
+
+However, `rate_song()` only creates or updates the rating and commits it:
+
+```python
+db.session.commit()
+```
+
+There is no call to `create_notification()`, so the original song sharer is never notified.
+
+### My fix and side-effect check
+After committing the rating, create a notification for the song's original sharer when the rater is someone else:
+
+```python
+if song.shared_by != user_id:
+    create_notification(
+        user_id=song.shared_by,
+        notification_type="song_rated",
+        body=f"{rater.username} rated your song '{song.title}' {score}/5.",
+    )
+```
+
+Checked:
+- Ratings continue to save correctly.
+- Users are not notified about their own ratings.
+- Playlist notifications continue working.
