@@ -1,0 +1,255 @@
+# Codebase Map
+
+## app.py
+
+### What it does
+- Sets up the main Flask application
+- Configures the application using environment variables (db URI, secret key, and SQLAlchemy settings)
+- Initializes the db
+- Registers all application bluebrints
+- Creates the database tables automatically when the application starts
+
+### Data Flow
+1. User sends an HTTP request
+2. Flask receives the request through the application created by create_app()
+3. The request is routed to the correct Blueprint based on its URL prefix
+4. That Blueprint calls the appropriate service layer
+5. The service queries or updates the database
+6. The result is returned as JSON back through Flask
+
+### Pattern Noticed
+- Uses the Application Factory pattern instead of creating a global Flask app.
+- Every feature is isolated into a Blueprint, making routes modular.
+- app.py never contains business logic—it only handles application configuration and wiring components together.
+
+
+## models.py
+
+### What it does
+- Defines every databse model used by the application.
+- Includes: 
+    - User
+    - Song
+    - Playlist
+    - Rating
+    - ListeningEvent
+    - Notifcation
+    - Tag
+- Defines three many-to-many association tables: Friendships, Song tags, and Playlist entries
+
+### Data Flow
+Creating a Playlist
+1. playlist_service creates a Playlist model.
+2. SQLAlchemy inserts it into the database.
+3. Future requests retrieve the same model through relationships or queries.
+4. When songs are added, playlist_entries stores the relationship and ordering information.
+
+### Pattern Noticed
+- Association tables are used to represent many-to-many relationships, including extra metadata such as playlist position and who added each song.
+- UUIDs are used consistently as primary keys across all entities.
+
+
+## routes/feed.py
+
+### What it does
+- Defines endpoints for the social feed.
+- Provides: 
+    - Friends currently listening (/listening-now)
+    - Friends' listening history (/activity)
+- Delegates all database work to feed_service.
+
+### Data Flow
+1. Client requests /feed/<user_id>/activity.
+2. Route calls get_activity_feed().
+3. Service retrieves the user's friends.
+4. Service queries recent ListeningEvent records.
+5. Service converts results into dictionaries.
+6. Route returns JSON containing the feed and item count.
+
+### Pattern Noticed
+- Routes contain almost no logic
+- Validation and HTTP responses stay in the route
+
+
+## routes/playlists.py
+
+### What it does
+- Handles playlist-related API endpoints.
+- Supports: 
+    - Creating playlists
+    - Viewing playlists
+    - Listing playlist songs
+    - Adding songs to playlists
+
+### Data Flow
+Adding a song to a playlist
+1. Client sends POST request with song_id and added_by.
+2. Route validates required fields.
+3. Calls notification_service.add_to_playlist().
+4. Service validates playlist, user, and song.
+5. Song is added to the playlist.
+6. If someone else originally shared the song, a notification is created.
+7. Success response returned to client.
+
+### Pattern noticed
+- Routes only validate request bodies.
+- One endpoint can trigger multiple backend actions (playlist update + notification).
+
+
+## routes/songs.py
+
+### What it does
+- Handles all song-related endpoints.
+- Supports: Searching songs, Retrieving song details, Rating songs, and Recording listening events
+
+### Data Flow
+Listening to a song
+1. Client POSTs to /songs/<id>/listen.
+2. Route validates user_id.
+3. Calls record_listening_event().
+4. Service creates a ListeningEvent.
+5. Service updates the user's listening streak.
+6. Database commits both changes.
+7. Event is returned as JSON.
+
+### Pattern Noticed
+- Different features are separated into different services.
+    - Search → search_service
+    - Ratings → notification_service
+    - Listening → streak_service
+- Routes simply dispatch requests to the correct service.
+
+
+## routes/users.py
+
+### What it does
+- Provides user-related endpoints.
+- Supports:
+    - User lookup
+    - Viewing listening streak
+    - Viewing notifications
+    - Marking notifications as read
+
+### Data Flow
+Viewing notifications
+1. Client requests /users/<id>/notifications.
+2. Route checks optional unread_only query parameter.
+3. Calls get_notifications().
+4. Service queries the Notification table.
+5. Notifications are sorted newest first.
+6. JSON response is returned.
+
+### Pattern noticed
+- Mixes direct database lookups (user profile) with service-layer calls.
+- Business operations (notifications and streaks) are delegated to services.
+
+
+## services/feed_service.py
+
+### What it does
+- Generates both social feed endpoints.
+- Retrieves friends' listening activity.
+- Filters and formats feed results.
+
+### Data flow
+Friends Listening Now
+1. Load the current user.
+2. Collect friend IDs.
+3. Query recent ListeningEvents.
+4. Remove duplicate friends so only the newest event remains.
+5. Fetch corresponding User and Song records.
+6. Return formatted feed objects.
+
+### Pattern noticed
+- Service performs all querying and filtering.
+- Routes never interact directly with database models.
+
+
+## services/notification_service.py
+
+### What it does
+- Handles notifications and ratings.
+- Creates notifications.
+- Retrieves notifications.
+- Marks notifications as read.
+- Adds songs to playlists.
+- Records song ratings.
+
+### Data flow
+Adding a song to a playlist
+1. Validate song.
+2. Validate user.
+3. Validate playlist.
+4. Add song if it isn't already present.
+5. Commit playlist update.
+6. If the adder isn't the original sharer:
+    - Create a notification.
+    - Save notification.
+7. Finish request.
+
+### Pattern noticed
+- One service manages related social interactions.
+- Helper function create_notification avoids duplicate notification code.
+
+
+## services/playlist_service.py
+
+### What it does
+- Contains playlist business logic.
+- Creates playlists.
+- Retrieves playlists.
+- Retrieves ordered playlist songs.
+- Retrieves playlists owned by a user.
+
+### Data flow
+Getting playlist songs
+1. Validate playlist exists
+2. Join Song with playlist_entries
+3. Sort by playlist position
+4. Convert each song to a dictionary
+5. Return ordered list
+
+### Pattern noticed
+- Uses SQL joins rather than relationship iteration to preserve playlist order.
+- Keeps playlist retrieval separate from notification logic.
+
+
+## services/search_service.py
+
+### What it does
+- Implements song searching.
+- Retrieves individual songs.
+
+### Data flow
+Song search
+1. Receive search string.
+2. Query songs matching title or artist.
+3. Join tag relationships.
+4. Convert each result to a dictionary.
+5. Return results list.
+
+### Pattern noticed
+- Pure read-only service.
+- Uses SQLAlchemy query building instead of manual filtering.
+
+
+## services/streak_service.py
+
+### What it does
+- Tracks listening history.
+- Updates listening streaks.
+- Retrieves streak values.
+
+### Data flow
+Recording a listening event
+1. Validate user
+2. Create a ListeningEvent
+3. Call update_listening_streak()
+4. Compare today's date with last listening date
+5. Increment, preserve, or reset streak
+6. Commit changes
+7. Return event
+
+### Pattern noticed
+- Complex streak rules are isolated into a helper function.
+- One database transaction updates both the event and the user's streak.
