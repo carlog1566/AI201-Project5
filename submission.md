@@ -11,6 +11,10 @@ During debugging, I first traced each feature from the route layer into the corr
 
 Finally, I used ChatGPT to help write my codebase map by further explaining functions/methods that I didn't fully understand. I also had it help me during the root cause analysis entries by helping me figure out ways to reproduce the bugs.
 
+# Bug Fix Commits
+
+![bugfix/mixtape commits](Commits.png)
+
 ---
 
 # Codebase Map
